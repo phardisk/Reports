@@ -1,0 +1,175 @@
+---
+title: "Weight lifting exercices, How well you do it?"
+output: html_document
+---
+
+**EXECUTIVE SUMMARY**  
+The weight lifting exercices is very important for health. The purpose of this report was to investigate "how (well)" an activity was performed by the wearer.In order to explore this question, the weight lifting exercices dataset extracted from <http://groupware.les.inf.puc-rio.br/har> was used for exploratory analysis and machine learning. Overall, the results indicate that the model built predicts,with 99% of accuracy, the performance class of the wearer.Then, this model, based on less than 30 variables,will allow us to define quality of execution and how to provide feedback on the quality of execution to the user. 
+
+**INTRODUCTION**   
+Traditionnally, the human activity recognition research  is focused on the period of time that the users do an exercise. This report seeks to answer to other questions. Its goal is to predict the manner in which the users did the exercise. For that, six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). 
+
+**METHODOLOGY** 
+
+In this report, we used two kinds of analytical tools: exploratory data nalysis and machine learning. The first tool allow us to discover some patterns in the data.  The second one is used to build the model that predicts the class of the observations in the test dataset. 
+The R software was used in order to perform the exploratory data analysis and the machine learning.Particularly, we applied some functions in the caret package and other algorithm like randomForest provided with the basic packages of R. 
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>.  
+Our methodology comprises 8 steps:  
+1- Loading the data  
+In this step we only load the dataset. 
+
+```{r echo=TRUE,cache = TRUE}
+library(caret)
+library(randomForest)
+setwd("C:/Users/Pascal/Desktop/COURSEera/Data Science/Practical Machine Learning/project")
+data<-read.csv("data.csv")
+```
+
+2- Splitting the data  
+The training dataset is splitted in two subdatasets: subtraining and subtesting. Based on the class variable, the first one represents 75% of the dataset. The model will build from the subtraining  and the subtesting will use for validating the model. 
+
+```{r echo=TRUE,cache = TRUE}
+set.seed=12349
+intrain<-createDataPartition(y=data$classe,p=0.75,list=FALSE)
+subtraining<-data[intrain,]
+subtesting<-data[-intrain,]
+```
+
+3- Exploratory data analysis  
+This step is performed to get an overview on the subtraining data.
+
+```{r echo=TRUE,cache = TRUE, results="hide"}
+summary(subtraining)
+```
+
+4-Preprocessing the subtraining data    
+a)Removing the X and the user_name variables  
+The observations are listed in order by classe. In that case, the X variable is able to influence the prediction.
+
+```{r echo=TRUE,cache = TRUE, results="hide"}
+plotX<- qplot(X,magnet_belt_x ,data=subtraining, color=classe,main="Influence of the X variable",xlab="X",ylab="Belt Magnet")
+```
+
+The user_name and the raw_timestamp_part_1 are very corelated.  It's for that We  removed the first one.  
+
+```{r echo=TRUE,cache = TRUE}
+subtraining<-subtraining[,-c(1,2)]
+```
+
+
+b) Removing missing value  
+In this step, we eliminate the variables that count missing value. 
+
+```{r echo=TRUE,cache = TRUE}
+v<-"NA"
+for(i in 1:ncol(subtraining))
+{
+        v[i]<-sum(is.na(subtraining[,i]))
+}
+names(v)<-colnames(subtraining)
+frame.v<-as.data.frame(v)
+frame.v<-subset(frame.v,frame.v[,1]==0)
+subtraining<-subtraining[,rownames(frame.v)]
+```
+
+5-Creating covariates  
+For the prediction analysis, some variables present a little interest because of their variability. In this step in order to reduce the number of variables, we remove th variables with a little variability. 
+
+```{r echo=TRUE, cache=TRUE}
+classe<-subtraining$classe
+nsv<-nearZeroVar(subtraining,saveMetrics=TRUE)
+## We select with percentunique >5 in order the number of variables
+nsv<-subset(nsv,percentUnique>5 & nzv=="FALSE")
+subtraining<-subtraining[,rownames(nsv)]
+subtraining$classe<-classe
+
+```
+
+6-Fitting the model  
+We try to catogorize some observations in this report. Then, it a classification case. We use the randomForest algorithm. 
+
+```{r echo=TRUE,cache = TRUE}
+fitModel.rf <-randomForest(classe ~ ., data=subtraining, mtry=5,
+                          importance=TRUE, na.action=na.omit)
+preObjtrain<-predict(fitModel.rf,subtraining)
+```
+
+7-Preprocess the testing set  
+
+a) Reducing the number of variables   
+In this step, the manipulations allow us to obtain for the test set the same variable found in the subtraining set.  
+ 
+```{r echo=TRUE,cache = TRUE}
+## Dataframe with class of subtesting variables 
+vtest<-sapply(subtesting,class)
+vtest<-as.data.frame(vtest)
+## Dataframe with class of subtraining variables 
+vtrain<-sapply(subtraining,class)
+vtrain<-as.data.frame(vtrain)
+## Intersection of the same variable
+int<-intersect(rownames(vtrain),rownames(vtest))
+## New dataframe  with class of subtesting variables
+subtesting<-subtesting[,int]
+```
+
+b) Harmonization of the class between the test set and the training set  
+The misclassification stops the prediction process. The class found for a variable in the training set has to be the same in the test set.
+
+```{r echo=TRUE, cache=TRUE}
+for(i in 1:ncol(subtesting))
+{
+        class(subtesting[,i])<-class(subtraining[,i])
+}
+```
+
+8-Cross validation  
+A total of 25% was reserved to make the cross validation. We used the predict function to preform the prediction and the confusionMatrix to find the accuracy of our model.
+
+```{r echo=TRUE, cache=TRUE}
+preObjtest<-predict(fitModel.rf,subtesting)
+matrix<-confusionMatrix(preObjtest,subtesting$classe)
+subtesting$predictionRight<-preObjtest==subtesting$classe
+```
+
+We blindly picked   two variables in order to indicate the wrong predictions.
+
+```{r echo=TRUE,cache = TRUE, results="hide"}
+plotY<-qplot(magnet_arm_z,magnet_arm_y,data=subtesting, color=predictionRight,main="Right and wrong prediction",xlab="Magnet_arm_z",ylab="magnet_arm_y")
+```
+
+**RESULT** 
+
+The first variable that we removed for this report is the variable X. The following figure shows how this variable can influence the prediction. Only with this variable, we observe the aggregation of the classes. 
+
+```{r echo=TRUE,cache=TRUE,fig.width=7, fig.height=4}
+plotX
+```
+
+The dataset used for this report comprises after the manipulations comprises a total of 28 variables. Then, 132 variables are removed. Among those removed variables, several had missing value whereas other had a little variability.
+
+```{r echo=TRUE ,cache = TRUE}
+dim(subtraining)
+```
+
+The cross validation was performed with the subtesting set. The model built has almost an accuracy of 100%. It predicts very well the classes A,B,C, and E. 
+
+```{r echo=TRUE,cache = TRUE}
+matrix
+```
+  
+But, we found one bad prediction: 1 observation of D is predicted as C. Then, the out of sample error is less than 1%. 
+
+```{r echo=TRUE,cache=TRUE,fig.width=15, fig.height=8}
+plotY
+```
+
+**CONCLUSION**  
+ 
+According to the level of the model accuracy, we built a tool that can be help to enhance the weight lifting exercices. From only less than 30 activities, we are able to define with less than 1% of error how (well)" an activity was performed by the wearer.As a result, this model will allow us to define quality of execution to detect the mistake in the execution of the activity and how to provide feedback on the quality of execution to the user. 
+
+
+
+
+
+
+
